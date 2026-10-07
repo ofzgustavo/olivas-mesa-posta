@@ -3,6 +3,12 @@
 Sistema de gestão de uma empresa de locação e montagem de mesas postas.
 Interface, código, comentários e mensagens de commit em **português**.
 
+## Fluxo de trabalho
+
+Commits e push **direto na `main`**, sem branch nem pull request (decisão
+da dona do projeto). A Vercel publica cada push na `main`, então só envie
+depois que as checagens abaixo passarem.
+
 ## Antes de concluir qualquer mudança
 
 ```bash
