@@ -1,0 +1,86 @@
+@import url("https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600&family=Lato:wght@400;700&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /*
+   * Cores da Olivas Mesa Posta, como triplas RGB (sem `rgb()`) para o
+   * modificador de opacidade do Tailwind: `rgb(var(--oliva) / <alpha>)`.
+   * Trocar os valores aqui retinge o sistema inteiro.
+   */
+  :root {
+    --oliva: 74 87 54;
+    --oliva-claro: 96 112 72;
+    --oliva-escuro: 50 60 36;
+    --areia: 196 168 112;
+    --areia-claro: 226 210 172;
+    --areia-escuro: 146 118 66;
+    --fundo: 247 244 237;
+    --cinza: 110 106 96;
+    --tinta: 34 34 30;
+  }
+
+  html {
+    font-family: "Lato", system-ui, sans-serif;
+    background-color: rgb(var(--fundo));
+    color: rgb(var(--tinta));
+  }
+
+  h1, h2, h3 {
+    font-family: "Cormorant Garamond", Georgia, serif;
+  }
+}
+
+@layer components {
+  .btn-primario {
+    @apply inline-flex items-center justify-center gap-1.5 bg-oliva text-white px-4 py-2
+           rounded-lg font-medium text-sm hover:bg-oliva-claro transition-colors
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-contorno {
+    @apply inline-flex items-center justify-center gap-1.5 border border-oliva/40 text-oliva
+           px-4 py-2 rounded-lg font-medium text-sm hover:bg-oliva/5 transition-colors
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .campo {
+    @apply w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-tinta bg-white
+           focus:outline-none focus:ring-2 focus:ring-areia focus:border-transparent
+           placeholder:text-gray-400 transition-shadow;
+  }
+
+  .rotulo {
+    @apply block text-xs font-medium text-cinza mb-1;
+  }
+
+  .cartao {
+    @apply bg-white rounded-xl shadow-sm border border-black/5 p-5 lg:p-6;
+  }
+
+  .titulo-secao {
+    @apply font-corpo text-xs font-bold uppercase tracking-wider text-cinza;
+  }
+
+  .selo {
+    @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap;
+  }
+
+  /* Cormorant usa algarismos de estilo antigo; em valores, alinhados e de largura fixa. */
+  .valor {
+    @apply tabular-nums lining-nums;
+  }
+}
+
+@layer utilities {
+  @keyframes toast-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .animate-toast-in {
+    animation: toast-in 0.2s ease-out;
+  }
+}
