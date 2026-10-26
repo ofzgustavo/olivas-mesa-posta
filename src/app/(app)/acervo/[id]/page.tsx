@@ -63,10 +63,16 @@ export default async function PecaPage({ params }: { params: Promise<{ id: strin
         }
       />
 
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <div className="cartao">
           <p className="titulo-secao">No acervo</p>
           <p className="text-3xl font-titulo text-oliva-escuro mt-1 valor">{peca.estoque}</p>
+        </div>
+        <div className="cartao">
+          <p className="titulo-secao">Locação por unidade</p>
+          <p className="text-3xl font-titulo text-oliva-escuro mt-1 valor">
+            {peca.valor_locacao != null ? formatCurrency(peca.valor_locacao) : "—"}
+          </p>
         </div>
         <div className="cartao">
           <p className="titulo-secao">Reposição por unidade</p>

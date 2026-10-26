@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   CalendarDays,
   PartyPopper,
+  FileText,
   Package,
   Users,
   TrendingUp,
@@ -24,6 +25,7 @@ const navItems = [
   { href: "/", label: "Painel", icon: LayoutDashboard },
   { href: "/agenda", label: "Agenda", icon: CalendarDays },
   { href: "/eventos", label: "Eventos", icon: PartyPopper },
+  { href: "/documentos", label: "Documentos", icon: FileText },
   { href: "/acervo", label: "Acervo", icon: Package },
   { href: "/clientes", label: "Clientes", icon: Users },
   { href: "/receitas", label: "Receitas", icon: TrendingUp },
@@ -50,7 +52,7 @@ export function Sidebar() {
   return (
     <>
       {/* Barra superior no celular */}
-      <div className="lg:hidden fixed top-0 inset-x-0 z-40 h-14 bg-oliva-escuro flex items-center justify-between px-4">
+      <div className="lg:hidden print:hidden fixed top-0 inset-x-0 z-40 h-14 bg-oliva-escuro flex items-center justify-between px-4">
         <Marca clara />
         <button
           onClick={() => setAberto(true)}
@@ -70,7 +72,7 @@ export function Sidebar() {
 
       <aside
         className={cn(
-          "w-60 bg-oliva-escuro flex flex-col shrink-0",
+          "w-60 bg-oliva-escuro flex flex-col shrink-0 print:hidden",
           "fixed inset-y-0 left-0 z-50 transform transition-transform duration-200",
           "lg:sticky lg:top-0 lg:h-screen lg:translate-x-0",
           aberto ? "translate-x-0" : "-translate-x-full"

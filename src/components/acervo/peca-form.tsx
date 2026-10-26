@@ -28,12 +28,19 @@ export function PecaForm({ peca }: { peca?: PecaEstoque }) {
       setErro("Valor de reposição inválido.");
       return;
     }
+    const locacaoTexto = String(form.get("valor_locacao") ?? "");
+    const locacao = locacaoTexto.trim() ? parseValor(locacaoTexto) : null;
+    if (locacao != null && (Number.isNaN(locacao) || locacao < 0)) {
+      setErro("Preço de locação inválido.");
+      return;
+    }
 
     setSalvando(true);
     const corpo = {
       nome: form.get("nome"),
       categoria: form.get("categoria"),
       valor_reposicao: valor,
+      valor_locacao: locacao,
       observacoes: form.get("observacoes"),
       quantidade: novaQtd,
       ...(peca ? { ativo: form.get("ativo") === "on" } : {}),
@@ -78,7 +85,7 @@ export function PecaForm({ peca }: { peca?: PecaEstoque }) {
         </div>
       </div>
 
-      <div className="grid sm:grid-cols-2 gap-4">
+      <div className="grid sm:grid-cols-3 gap-4">
         <div>
           <label className="rotulo" htmlFor="quantidade">
             {peca ? "Quantidade no acervo hoje *" : "Quantidade que vocês têm *"}
@@ -102,6 +109,18 @@ export function PecaForm({ peca }: { peca?: PecaEstoque }) {
           )}
         </div>
         <div>
+          <label className="rotulo" htmlFor="valor_locacao">Preço de locação por unidade (R$)</label>
+          <input
+            id="valor_locacao"
+            name="valor_locacao"
+            inputMode="decimal"
+            defaultValue={peca?.valor_locacao != null ? String(peca.valor_locacao).replace(".", ",") : ""}
+            className="campo"
+            placeholder="0,00"
+          />
+          <p className="text-xs text-cinza mt-1">Sugerido ao escolher a peça num evento.</p>
+        </div>
+        <div>
           <label className="rotulo" htmlFor="valor_reposicao">Valor de reposição por unidade (R$)</label>
           <input
             id="valor_reposicao"
@@ -111,7 +130,7 @@ export function PecaForm({ peca }: { peca?: PecaEstoque }) {
             className="campo"
             placeholder="0,00"
           />
-          <p className="text-xs text-cinza mt-1">Usado para sugerir a cobrança de quebra ou perda.</p>
+          <p className="text-xs text-cinza mt-1">Sai no contrato e sugere a cobrança de quebra ou perda.</p>
         </div>
       </div>
 

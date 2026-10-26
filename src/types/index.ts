@@ -33,6 +33,7 @@ export interface Peca {
   nome: string;
   categoria: CategoriaPeca;
   valor_reposicao: number | null;
+  valor_locacao: number | null;
   observacoes: string | null;
   ativo: boolean;
   created_at: string;
@@ -53,6 +54,7 @@ export interface Disponibilidade {
 
 export interface Evento {
   id: string;
+  numero: number;
   cliente_id: string;
   titulo: string;
   tipo_evento: string | null;
@@ -60,7 +62,10 @@ export interface Evento {
   data_saida: string;
   data_retorno: string;
   local: string | null;
+  recebe_pecas: string | null;
   convidados: number | null;
+  frete: number;
+  desconto: number;
   valor_total: number;
   status: StatusEvento;
   observacoes: string | null;
@@ -77,6 +82,7 @@ export interface EventoItem {
   evento_id: string;
   peca_id: string;
   quantidade: number;
+  valor_unitario: number;
   pecas?: Peca;
 }
 

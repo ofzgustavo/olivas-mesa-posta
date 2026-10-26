@@ -62,6 +62,8 @@ CREATE TABLE pecas (
                                          'toalhas', 'guardanapos', 'decoracao', 'outros')),
   -- preço de reposição de UMA unidade; sugere o valor da cobrança de avaria
   valor_reposicao NUMERIC(12,2) CHECK (valor_reposicao >= 0),
+  -- preço de locação de UMA unidade; sugere o preço do item no evento
+  valor_locacao   NUMERIC(12,2) CHECK (valor_locacao >= 0),
   observacoes     TEXT,
   -- peça aposentada some das listas de escolha, mas o histórico fica
   ativo           BOOLEAN       NOT NULL DEFAULT TRUE,
@@ -76,6 +78,8 @@ CREATE UNIQUE INDEX idx_pecas_nome ON pecas (lower(btrim(nome)));
 -- =============================================
 CREATE TABLE eventos (
   id           UUID          DEFAULT gen_random_uuid() PRIMARY KEY,
+  -- número sequencial impresso no orçamento, contrato e recibo
+  numero       BIGINT        GENERATED ALWAYS AS IDENTITY UNIQUE,
   cliente_id   UUID          NOT NULL REFERENCES clientes(id) ON DELETE RESTRICT,
   titulo       TEXT          NOT NULL CHECK (btrim(titulo) <> ''),
   tipo_evento  TEXT,
@@ -85,8 +89,16 @@ CREATE TABLE eventos (
   data_saida   DATE          NOT NULL,
   data_retorno DATE          NOT NULL,
   local        TEXT,
+  -- quem recebe as peças na entrega (sai no orçamento)
+  recebe_pecas TEXT,
   convidados   INTEGER       CHECK (convidados > 0),
-  -- preço personalizado combinado com o cliente (locação + montagem)
+  -- frete cobrado do cliente e desconto dado; entram nos documentos.
+  -- O custo do frete para a Olivas é despesa, não isto.
+  frete        NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (frete >= 0),
+  desconto     NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (desconto >= 0),
+  -- preço combinado com o cliente. O formulário sugere itens + frete −
+  -- desconto, mas pode ser outro (montagem, por exemplo); a diferença
+  -- aparece nos documentos.
   valor_total  NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (valor_total >= 0),
   status       TEXT          NOT NULL DEFAULT 'orcamento'
                  CHECK (status IN ('orcamento', 'confirmado', 'realizado', 'cancelado')),
@@ -101,6 +113,9 @@ CREATE TABLE evento_itens (
   evento_id  UUID    NOT NULL REFERENCES eventos(id) ON DELETE CASCADE,
   peca_id    UUID    NOT NULL REFERENCES pecas(id) ON DELETE RESTRICT,
   quantidade INTEGER NOT NULL CHECK (quantidade > 0),
+  -- preço de locação de uma unidade NESTE evento (mudar o preço da peça
+  -- no acervo não altera orçamento já feito)
+  valor_unitario NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (valor_unitario >= 0),
   UNIQUE (evento_id, peca_id)
 );
 
@@ -495,11 +510,12 @@ BEGIN
   END IF;
 
   IF v_id IS NULL THEN
-    INSERT INTO pecas (nome, categoria, valor_reposicao, observacoes)
+    INSERT INTO pecas (nome, categoria, valor_reposicao, valor_locacao, observacoes)
     VALUES (
       btrim(p_dados->>'nome'),
       p_dados->>'categoria',
       NULLIF(p_dados->>'valor_reposicao', '')::NUMERIC,
+      NULLIF(p_dados->>'valor_locacao', '')::NUMERIC,
       NULLIF(btrim(p_dados->>'observacoes'), '')
     )
     RETURNING id INTO v_id;
@@ -513,6 +529,7 @@ BEGIN
     nome            = btrim(p_dados->>'nome'),
     categoria       = p_dados->>'categoria',
     valor_reposicao = NULLIF(p_dados->>'valor_reposicao', '')::NUMERIC,
+    valor_locacao   = NULLIF(p_dados->>'valor_locacao', '')::NUMERIC,
     observacoes     = NULLIF(btrim(p_dados->>'observacoes'), ''),
     ativo           = COALESCE((p_dados->>'ativo')::BOOLEAN, ativo)
   WHERE id = v_id;
@@ -538,7 +555,7 @@ $$;
 -- disponibilidade no COMMIT — nada é gravado. Nada de evento salvo sem
 -- parcelas, nem parcela nova perdida em silêncio.
 --
--- p_itens:    [{ "peca_id": "...", "quantidade": 10 }, ...]
+-- p_itens:    [{ "peca_id": "...", "quantidade": 10, "valor_unitario": 2.5 }, ...]
 --             (substitui a lista inteira de itens)
 -- p_parcelas: [{ "id": "..."?, "tipo": "sinal", "valor": 500,
 --               "data_vencimento": "2026-11-01" }, ...]
@@ -562,7 +579,7 @@ BEGIN
   IF v_id IS NULL THEN
     INSERT INTO eventos (
       cliente_id, titulo, tipo_evento, data_evento, data_saida, data_retorno,
-      local, convidados, valor_total, status, observacoes
+      local, recebe_pecas, convidados, frete, desconto, valor_total, status, observacoes
     ) VALUES (
       (p_dados->>'cliente_id')::UUID,
       btrim(p_dados->>'titulo'),
@@ -571,7 +588,10 @@ BEGIN
       (p_dados->>'data_saida')::DATE,
       (p_dados->>'data_retorno')::DATE,
       NULLIF(btrim(p_dados->>'local'), ''),
+      NULLIF(btrim(p_dados->>'recebe_pecas'), ''),
       NULLIF(p_dados->>'convidados', '')::INTEGER,
+      COALESCE(NULLIF(p_dados->>'frete', '')::NUMERIC, 0),
+      COALESCE(NULLIF(p_dados->>'desconto', '')::NUMERIC, 0),
       COALESCE(NULLIF(p_dados->>'valor_total', '')::NUMERIC, 0),
       COALESCE(p_dados->>'status', 'orcamento'),
       NULLIF(btrim(p_dados->>'observacoes'), '')
@@ -586,7 +606,10 @@ BEGIN
       data_saida   = (p_dados->>'data_saida')::DATE,
       data_retorno = (p_dados->>'data_retorno')::DATE,
       local        = NULLIF(btrim(p_dados->>'local'), ''),
+      recebe_pecas = NULLIF(btrim(p_dados->>'recebe_pecas'), ''),
       convidados   = NULLIF(p_dados->>'convidados', '')::INTEGER,
+      frete        = COALESCE(NULLIF(p_dados->>'frete', '')::NUMERIC, 0),
+      desconto     = COALESCE(NULLIF(p_dados->>'desconto', '')::NUMERIC, 0),
       valor_total  = COALESCE(NULLIF(p_dados->>'valor_total', '')::NUMERIC, 0),
       -- sem "status" no payload, o status atual é mantido
       status       = COALESCE(p_dados->>'status', status),
@@ -603,10 +626,13 @@ BEGIN
      AND peca_id NOT IN (
        SELECT (x->>'peca_id')::UUID FROM jsonb_array_elements(COALESCE(p_itens, '[]')) x
      );
-  INSERT INTO evento_itens (evento_id, peca_id, quantidade)
-  SELECT v_id, (x->>'peca_id')::UUID, (x->>'quantidade')::INTEGER
+  INSERT INTO evento_itens (evento_id, peca_id, quantidade, valor_unitario)
+  SELECT v_id, (x->>'peca_id')::UUID, (x->>'quantidade')::INTEGER,
+         COALESCE(NULLIF(x->>'valor_unitario', '')::NUMERIC, 0)
     FROM jsonb_array_elements(COALESCE(p_itens, '[]')) x
-  ON CONFLICT (evento_id, peca_id) DO UPDATE SET quantidade = EXCLUDED.quantidade;
+  ON CONFLICT (evento_id, peca_id) DO UPDATE SET
+    quantidade     = EXCLUDED.quantidade,
+    valor_unitario = EXCLUDED.valor_unitario;
 
   -- Parcelas
   DELETE FROM parcelas

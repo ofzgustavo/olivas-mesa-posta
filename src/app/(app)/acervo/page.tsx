@@ -93,6 +93,9 @@ function TabelaPecas({
               <th className="titulo-secao pb-2 px-2 font-normal text-right">Reservado</th>
               <th className="titulo-secao pb-2 px-2 font-normal text-right">Livre</th>
               <th className="titulo-secao pb-2 px-2 font-normal text-right hidden sm:table-cell">
+                Locação (un.)
+              </th>
+              <th className="titulo-secao pb-2 px-2 font-normal text-right hidden sm:table-cell">
                 Reposição (un.)
               </th>
             </tr>
@@ -115,6 +118,9 @@ function TabelaPecas({
                   title={p.disponivel < 0 ? "Há mais reservado do que existe no acervo" : undefined}
                 >
                   {p.disponivel}
+                </td>
+                <td className="py-2.5 px-2 text-right valor text-cinza hidden sm:table-cell">
+                  {p.valor_locacao != null ? formatCurrency(p.valor_locacao) : "—"}
                 </td>
                 <td className="py-2.5 px-2 text-right valor text-cinza hidden sm:table-cell">
                   {p.valor_reposicao != null ? formatCurrency(p.valor_reposicao) : "—"}

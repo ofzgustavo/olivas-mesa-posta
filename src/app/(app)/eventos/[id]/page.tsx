@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { CalendarDays, MapPin, Pencil, Phone, Users } from "lucide-react";
+import { CalendarDays, FilePenLine, FileText, MapPin, Pencil, Phone, ReceiptText, Truck, Users } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { ActionButtons } from "@/components/ui/action-buttons";
 import { SeloEvento, SeloParcela } from "@/components/ui/selos";
@@ -25,6 +25,7 @@ import {
 
 type ItemComPeca = {
   quantidade: number;
+  valor_unitario: number;
   peca_id: string;
   pecas: { id: string; nome: string; categoria: CategoriaPeca; valor_reposicao: number | null } | null;
 };
@@ -37,7 +38,7 @@ export default async function EventoPage({ params }: { params: Promise<{ id: str
     supabase
       .from("eventos")
       .select(
-        "*, clientes(*), evento_itens(quantidade, peca_id, pecas(id, nome, categoria, valor_reposicao)), parcelas(*), avarias(*, pecas(nome))"
+        "*, clientes(*), evento_itens(quantidade, valor_unitario, peca_id, pecas(id, nome, categoria, valor_reposicao)), parcelas(*), avarias(*, pecas(nome))"
       )
       .eq("id", id)
       .maybeSingle(),
@@ -193,7 +194,12 @@ export default async function EventoPage({ params }: { params: Promise<{ id: str
                           <Link href={`/acervo/${i.peca_id}`} className="hover:text-oliva hover:underline">
                             {i.pecas?.nome}
                           </Link>
-                          <span className="valor font-bold">{i.quantidade}</span>
+                          <span className="valor">
+                            <strong>{i.quantidade}</strong>
+                            {Number(i.valor_unitario) > 0 && (
+                              <span className="text-cinza"> × {formatCurrency(i.valor_unitario)}</span>
+                            )}
+                          </span>
                         </li>
                       ))}
                     </ul>
@@ -260,6 +266,11 @@ export default async function EventoPage({ params }: { params: Promise<{ id: str
                 <MapPin className="w-4 h-4 text-cinza" /> {evento.local}
               </p>
             )}
+            {evento.recebe_pecas && (
+              <p className="flex items-center gap-2">
+                <Truck className="w-4 h-4 text-cinza" /> Recebe: {evento.recebe_pecas}
+              </p>
+            )}
             {evento.convidados && (
               <p className="flex items-center gap-2">
                 <Users className="w-4 h-4 text-cinza" /> {evento.convidados} convidados
@@ -279,6 +290,21 @@ export default async function EventoPage({ params }: { params: Promise<{ id: str
             {evento.observacoes && (
               <p className="pt-2 border-t border-black/5 whitespace-pre-line text-cinza">{evento.observacoes}</p>
             )}
+          </section>
+
+          <section className="cartao text-sm">
+            <h2 className="titulo-secao mb-3">Documentos</h2>
+            <div className="flex flex-wrap gap-2">
+              {[
+                { tipo: "orcamento", rotulo: "Orçamento", Icone: FileText },
+                { tipo: "contrato", rotulo: "Contrato", Icone: FilePenLine },
+                { tipo: "recibo", rotulo: "Recibo", Icone: ReceiptText },
+              ].map(({ tipo, rotulo, Icone }) => (
+                <Link key={tipo} href={`/documentos/${evento.id}/${tipo}`} className="btn-contorno px-3 py-1.5">
+                  <Icone className="w-4 h-4" /> {rotulo}
+                </Link>
+              ))}
+            </div>
           </section>
 
           <section className="cartao text-sm">

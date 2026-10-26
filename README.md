@@ -13,8 +13,9 @@ para o volume de uma usuária.
 |---|---|
 | **Painel** | Recebido, despesas, resultado, a receber e vencido; gráfico do período; saídas/eventos/retornos dos próximos 14 dias; cobranças dos próximos 30 dias |
 | **Agenda** | Calendário do mês com eventos, saída e retorno das peças |
-| **Eventos** | Orçamentos e eventos: cliente, datas, peças, valor, condição de pagamento, avarias e resultado |
-| **Acervo** | Peças, estoque e quanto está livre em qualquer período; histórico de entradas e saídas de cada peça |
+| **Eventos** | Orçamentos e eventos: cliente, datas, peças com preço por item, frete, desconto, valor, condição de pagamento, avarias e resultado |
+| **Documentos** | Orçamento, contrato de locação e recibo de entrega de cada evento, prontos para imprimir ou salvar em PDF |
+| **Acervo** | Peças, preço de locação e de reposição, estoque e quanto está livre em qualquer período; histórico de entradas e saídas de cada peça |
 | **Clientes** | Cadastro |
 | **Receitas** | O que foi recebido (por período) e tudo o que falta receber |
 | **Despesas** | Frete, reposição, tráfego pago, aquisição de peças e outros |
@@ -53,6 +54,9 @@ do app consegue violá-las.
 4. **Authentication → Users → Add user**: crie o usuário com e-mail e senha
    de quem vai usar o sistema (marque *Auto Confirm User*).
 5. **Project Settings → API**: copie a *Project URL* e a chave *anon public*.
+6. *(Opcional)* **SQL Editor** → rode `supabase/catalogo-inicial.sql` para
+   trazer as 25 peças do catálogo antigo com os preços (estoque entra
+   zerado: informe a quantidade de cada peça no Acervo).
 
 ### 2. Vercel
 
@@ -61,6 +65,18 @@ do app consegue violá-las.
    - `NEXT_PUBLIC_SUPABASE_URL` = Project URL
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY` = chave anon public
 3. *Deploy*. Pronto: entre com o usuário criado no passo 1.4.
+
+## Atualizar um banco que já está no ar
+
+Mudanças de schema vêm como arquivos `supabase/migracao-*.sql`. Rode no
+**SQL Editor** do Supabase, em ordem de data, as que ainda não rodaram
+(todas podem ser rodadas de novo sem estragar nada):
+
+| Arquivo | O que traz |
+|---|---|
+| `migracao-2026-10-documentos.sql` | Preço de locação da peça, preço por item do evento, frete, desconto, "quem recebe" e número do evento (usado nos documentos) |
+
+Rode a migração **antes** de publicar o código que depende dela.
 
 ## Desenvolvimento
 
@@ -75,7 +91,7 @@ Checagens (rode antes de cada commit):
 ```bash
 npm run type-check
 npm run lint
-npm test                     # datas, parcelas, valores em reais
+npm test                     # datas, parcelas, valores em reais, documentos
 ```
 
 Testes das regras do banco (precisa de um PostgreSQL local descartável —
@@ -91,6 +107,8 @@ psql -v ON_ERROR_STOP=1 -d olivas_teste -f supabase/testes/regras.sql
 ```
 supabase/
   schema.sql            # tabelas, regras (triggers), funções e RLS
+  migracao-*.sql        # mudanças para o banco que já está no ar
+  catalogo-inicial.sql  # opcional: peças e preços do catálogo antigo
   testes/regras.sql     # testes das regras de reserva, avaria e acervo
 src/
   app/(app)/            # telas protegidas (painel, agenda, eventos, acervo…)
@@ -102,6 +120,8 @@ src/
     parcelas.ts         # gera sinal + saldo, parcelado, à vista
     valores.ts          # lê "1.234,56", "1.000" etc.
     acervo.ts           # acervo + disponibilidade num período
+    documentos.ts       # totais, prazo e pagamento do orçamento/contrato/recibo
+    empresa.ts          # telefone, e-mail e foro impressos nos documentos
     supabase/paginar.ts # busca paginada (o Supabase corta em 1.000 linhas)
   types/index.ts        # tipos e rótulos em português
 ```
@@ -118,3 +138,10 @@ src/
 - **Cores dos gráficos** (`components/graficos.tsx`) foram validadas para
   daltonismo; a marca (`app/globals.css`) é trocada mudando as variáveis
   `--oliva`, `--areia` etc. O logo é o componente `components/layout/marca.tsx`.
+- **Documentos saem do evento, não são guardados à parte.** Orçamento,
+  contrato e recibo são montados na hora a partir do evento (número,
+  cliente, peças, preços e parcelas); corrigir o evento corrige os
+  documentos. O preço de cada peça fica gravado no evento, então mudar o
+  preço no acervo não altera orçamento já feito. Se o valor do evento for
+  diferente de itens + frete − desconto, a diferença sai no documento como
+  "montagem e serviços" (ou "desconto adicional"), para a conta fechar.
