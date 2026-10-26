@@ -347,6 +347,69 @@ BEGIN
 END $$;
 
 -- ---------------------------------------------
+-- Documentos: preço por item, frete, desconto e número do evento
+-- ---------------------------------------------
+INSERT INTO ids VALUES
+  ('prato', salvar_peca(NULL, '{"nome":"Prato raso","categoria":"loucas","valor_reposicao":"38","valor_locacao":"1.5"}', 100));
+INSERT INTO ids VALUES ('doc', salvar_evento(NULL,
+  jsonb_build_object('cliente_id', (SELECT id FROM ids WHERE nome='ana'), 'titulo', 'Evento Doc',
+    'data_evento','2027-01-10','data_saida','2027-01-10','data_retorno','2027-01-13',
+    'frete','40','desconto','10','recebe_pecas',' Keila ','valor_total','180'),
+  jsonb_build_array(jsonb_build_object('peca_id', (SELECT id FROM ids WHERE nome='prato'),
+    'quantidade', 100, 'valor_unitario', 1.5)),
+  '[]'));
+DO $$
+DECLARE
+  ev eventos%ROWTYPE;
+BEGIN
+  SELECT * INTO ev FROM eventos WHERE id = (SELECT id FROM ids WHERE nome='doc');
+  ASSERT ev.frete = 40 AND ev.desconto = 10, 'frete e desconto deveriam ser gravados';
+  ASSERT ev.recebe_pecas = 'Keila', 'quem recebe deveria ser gravado sem espaços';
+  ASSERT ev.numero > (SELECT MAX(numero) FROM eventos WHERE id <> ev.id),
+    'evento novo deveria ganhar o próximo número';
+  ASSERT (SELECT valor_locacao FROM pecas_estoque WHERE id = (SELECT id FROM ids WHERE nome='prato')) = 1.5,
+    'preço de locação deveria aparecer na view do acervo';
+  ASSERT (SELECT valor_unitario FROM evento_itens WHERE evento_id = ev.id) = 1.5,
+    'preço do item deveria ser gravado';
+END $$;
+
+-- Mudar o preço da peça não mexe no preço já combinado no evento; editar
+-- o evento grava o preço novo do item.
+SELECT salvar_peca((SELECT id FROM ids WHERE nome='prato'),
+  '{"nome":"Prato raso","categoria":"loucas","valor_locacao":"2"}', 100);
+DO $$
+BEGIN
+  ASSERT (SELECT valor_unitario FROM evento_itens
+           WHERE evento_id = (SELECT id FROM ids WHERE nome='doc')) = 1.5,
+    'preço do item não deveria mudar com o preço da peça';
+END $$;
+SELECT salvar_evento((SELECT id FROM ids WHERE nome='doc'),
+  jsonb_build_object('cliente_id', (SELECT id FROM ids WHERE nome='ana'), 'titulo', 'Evento Doc',
+    'data_evento','2027-01-10','data_saida','2027-01-10','data_retorno','2027-01-13','valor_total','200'),
+  jsonb_build_array(jsonb_build_object('peca_id', (SELECT id FROM ids WHERE nome='prato'),
+    'quantidade', 100, 'valor_unitario', 2)),
+  '[]');
+DO $$
+DECLARE
+  ev eventos%ROWTYPE;
+BEGIN
+  SELECT * INTO ev FROM eventos WHERE id = (SELECT id FROM ids WHERE nome='doc');
+  ASSERT (SELECT valor_unitario FROM evento_itens WHERE evento_id = ev.id) = 2,
+    'editar o evento deveria gravar o preço novo do item';
+  ASSERT ev.frete = 0 AND ev.desconto = 0 AND ev.recebe_pecas IS NULL,
+    'sem frete/desconto/recebe no payload, os campos deveriam zerar';
+END $$;
+
+DO $$
+BEGIN
+  INSERT INTO evento_itens (evento_id, peca_id, quantidade, valor_unitario)
+  VALUES ((SELECT id FROM ids WHERE nome='doc'), (SELECT id FROM ids WHERE nome='taca'), 1, -1);
+  RAISE EXCEPTION 'preço negativo deveria ser recusado';
+EXCEPTION WHEN check_violation THEN
+  NULL;
+END $$;
+
+-- ---------------------------------------------
 -- Sem login, nada é visível
 -- ---------------------------------------------
 RESET ROLE;

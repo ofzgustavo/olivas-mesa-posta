@@ -10,6 +10,7 @@ import { requisitar } from "@/lib/requisitar";
 import { cn, formatCurrency, parseValor } from "@/lib/utils";
 import { formatarData, hoje, isDataISO, somarDias } from "@/lib/datas";
 import { gerarParcelas, somaParcelas, type Condicao } from "@/lib/parcelas";
+import { somaItens, valorSugerido } from "@/lib/documentos";
 import type { PecaComDisponibilidade } from "@/lib/acervo";
 import {
   CATEGORIAS_PECA,
@@ -23,7 +24,7 @@ import {
 } from "@/types";
 
 type EventoCompleto = Evento & {
-  evento_itens: { peca_id: string; quantidade: number }[];
+  evento_itens: { peca_id: string; quantidade: number; valor_unitario: number }[];
   parcelas: Parcela[];
 };
 
@@ -44,6 +45,11 @@ const novaChave = () => proximaChave++;
 
 function valorParaCampo(valor: number): string {
   return valor.toFixed(2).replace(".", ",");
+}
+
+// Campo de dinheiro opcional: vazio vale zero.
+function valorOuZero(texto: string | undefined): number {
+  return texto?.trim() ? parseValor(texto) : 0;
 }
 
 export function EventoForm({
@@ -69,6 +75,7 @@ export function EventoForm({
   // acompanham a data do evento (sai no dia, volta 3 dias depois).
   const [datasManuais, setDatasManuais] = useState(editando);
   const [local, setLocal] = useState(evento?.local ?? "");
+  const [recebePecas, setRecebePecas] = useState(evento?.recebe_pecas ?? "");
   const [convidados, setConvidados] = useState(evento?.convidados ? String(evento.convidados) : "");
   const [observacoes, setObservacoes] = useState(evento?.observacoes ?? "");
 
@@ -81,13 +88,29 @@ export function EventoForm({
   const [itens, setItens] = useState<Record<string, string>>(() =>
     Object.fromEntries((evento?.evento_itens ?? []).map((i) => [i.peca_id, String(i.quantidade)]))
   );
+  // Preço de uma unidade neste evento. Ao escolher a peça, vem o preço de
+  // locação do acervo; pode ser mudado só para este evento.
+  const [precos, setPrecos] = useState<Record<string, string>>(() =>
+    Object.fromEntries(
+      (evento?.evento_itens ?? [])
+        .filter((i) => Number(i.valor_unitario) > 0)
+        .map((i) => [i.peca_id, valorParaCampo(Number(i.valor_unitario))])
+    )
+  );
   const [acervo, setAcervo] = useState<PecaComDisponibilidade[] | null>(null);
   const [erroAcervo, setErroAcervo] = useState<string | null>(null);
   const [busca, setBusca] = useState("");
   const [soEscolhidas, setSoEscolhidas] = useState(editando);
 
   // ---- pagamento ----
+  const [frete, setFrete] = useState(evento && Number(evento.frete) > 0 ? valorParaCampo(Number(evento.frete)) : "");
+  const [desconto, setDesconto] = useState(
+    evento && Number(evento.desconto) > 0 ? valorParaCampo(Number(evento.desconto)) : ""
+  );
   const [valorTotal, setValorTotal] = useState(evento ? valorParaCampo(Number(evento.valor_total)) : "");
+  // Num evento novo, o valor acompanha itens + frete − desconto até a
+  // usuária digitar outro (montagem, por exemplo).
+  const [valorManual, setValorManual] = useState(editando);
   const [parcelas, setParcelas] = useState<LinhaParcela[]>(() =>
     (evento?.parcelas ?? [])
       .filter((p) => p.tipo !== "avaria")
@@ -168,6 +191,13 @@ export function EventoForm({
     return [...mapa.entries()];
   }, [pecasVisiveis]);
 
+  function mudarQuantidade(peca: PecaComDisponibilidade, quantidade: string) {
+    setItens((atuais) => ({ ...atuais, [peca.id]: quantidade }));
+    if (Number(quantidade) > 0 && !precos[peca.id]?.trim() && peca.valor_locacao != null) {
+      setPrecos((atuais) => ({ ...atuais, [peca.id]: valorParaCampo(Number(peca.valor_locacao)) }));
+    }
+  }
+
   const faltas = useMemo(() => {
     if (!acervo) return [];
     return acervo
@@ -175,8 +205,22 @@ export function EventoForm({
       .map((p) => ({ nome: p.nome, pedido: Number(itens[p.id]), livre: Math.max(p.disponivel, 0) }));
   }, [acervo, itens]);
 
+  // ---- valor: itens + frete − desconto ----
+  const valorFrete = valorOuZero(frete);
+  const valorDesconto = valorOuZero(desconto);
+  const itensComPreco = escolhidas.map(([peca_id, q]) => ({
+    peca_id,
+    quantidade: Number(q),
+    valor_unitario: valorOuZero(precos[peca_id]),
+  }));
+  const precosValidos = itensComPreco.every((i) => Number.isFinite(i.valor_unitario) && i.valor_unitario >= 0);
+  const extrasValidos = [valorFrete, valorDesconto].every((v) => Number.isFinite(v) && v >= 0);
+  const subtotalItens = precosValidos ? somaItens(itensComPreco) : NaN;
+  const sugerido = precosValidos && extrasValidos ? valorSugerido(itensComPreco, valorFrete, valorDesconto) : NaN;
+  const valorTotalCampo = valorManual ? valorTotal : sugerido > 0 ? valorParaCampo(sugerido) : "";
+
   // ---- pagamento: contas ----
-  const total = parseValor(valorTotal);
+  const total = parseValor(valorTotalCampo);
   const totalValido = Number.isFinite(total) && total >= 0;
   const valoresParcelas = parcelas.map((p) => parseValor(p.valor));
   const parcelasValidas = valoresParcelas.every((v) => Number.isFinite(v) && v > 0);
@@ -257,6 +301,8 @@ export function EventoForm({
     e.preventDefault();
     setErro(null);
 
+    if (!precosValidos) return setErro("Confira os preços das peças.");
+    if (!extrasValidos) return setErro("Confira o frete e o desconto.");
     if (!totalValido) return setErro("Valor do evento inválido.");
     if (!parcelasValidas) return setErro("Confira os valores das parcelas.");
     if (parcelas.some((p) => !isDataISO(p.data_vencimento))) {
@@ -276,10 +322,13 @@ export function EventoForm({
       data_saida: dataSaida,
       data_retorno: dataRetorno,
       local,
+      recebe_pecas: recebePecas,
       convidados,
+      frete: valorFrete,
+      desconto: valorDesconto,
       valor_total: total,
       observacoes,
-      itens: escolhidas.map(([peca_id, q]) => ({ peca_id, quantidade: Number(q) })),
+      itens: itensComPreco,
       parcelas: parcelas.map((p) => ({
         ...(p.id ? { id: p.id } : {}),
         tipo: p.tipo,
@@ -418,10 +467,19 @@ export function EventoForm({
           dia do evento e voltam {DIAS_RETORNO_PADRAO} dias depois.
         </p>
 
-        <div className="grid sm:grid-cols-3 gap-4">
+        <div className="grid sm:grid-cols-4 gap-4">
           <div className="sm:col-span-2">
-            <label className="rotulo" htmlFor="local">Local</label>
+            <label className="rotulo" htmlFor="local">Local de entrega</label>
             <input id="local" value={local} onChange={(e) => setLocal(e.target.value)} className="campo" />
+          </div>
+          <div>
+            <label className="rotulo" htmlFor="recebe-pecas">Quem recebe as peças</label>
+            <input
+              id="recebe-pecas"
+              value={recebePecas}
+              onChange={(e) => setRecebePecas(e.target.value)}
+              className="campo"
+            />
           </div>
           <div>
             <label className="rotulo" htmlFor="convidados">Convidados</label>
@@ -521,13 +579,19 @@ export function EventoForm({
                       {lista.map((p) => {
                         const qtd = Number(itens[p.id]) || 0;
                         const excede = qtd > Math.max(p.disponivel, 0);
+                        const preco = valorOuZero(precos[p.id]);
                         return (
-                          <li key={p.id} className="flex items-center gap-3 py-2">
-                            <div className="flex-1 min-w-0">
+                          <li key={p.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
+                            <div className="flex-1 min-w-40">
                               <p className={cn("text-sm truncate", qtd > 0 && "font-bold")}>{p.nome}</p>
                               <p className="text-xs text-cinza">
                                 {Math.max(p.disponivel, 0)} livres de {p.estoque}
                                 {!p.ativo && " · peça desativada"}
+                                {qtd > 0 && preco > 0 && (
+                                  <span className="valor text-oliva">
+                                    {" "}· {qtd} × {formatCurrency(preco)} = {formatCurrency(qtd * preco)}
+                                  </span>
+                                )}
                               </p>
                             </div>
                             <input
@@ -537,10 +601,28 @@ export function EventoForm({
                               inputMode="numeric"
                               aria-label={`Quantidade de ${p.nome}`}
                               value={itens[p.id] ?? ""}
-                              onChange={(e) => setItens((atuais) => ({ ...atuais, [p.id]: e.target.value }))}
+                              onChange={(e) => mudarQuantidade(p, e.target.value)}
                               className={cn("campo w-24 text-right", excede && "ring-2 ring-amber-400")}
                               placeholder="0"
                             />
+                            {qtd > 0 ? (
+                              <div className="relative w-28" title="Preço por unidade">
+                                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-cinza">
+                                  R$/un.
+                                </span>
+                                <input
+                                  inputMode="decimal"
+                                  aria-label={`Preço por unidade de ${p.nome}`}
+                                  value={precos[p.id] ?? ""}
+                                  onChange={(e) => setPrecos((atuais) => ({ ...atuais, [p.id]: e.target.value }))}
+                                  className="campo pl-12 text-right"
+                                  placeholder="0,00"
+                                />
+                              </div>
+                            ) : (
+                              // guarda o lugar do preço para as quantidades ficarem alinhadas
+                              <span className="w-28 hidden sm:block" aria-hidden="true" />
+                            )}
                           </li>
                         );
                       })}
@@ -557,19 +639,72 @@ export function EventoForm({
       <section className="cartao space-y-4">
         <h2 className="titulo-secao">Valor e pagamento</h2>
 
-        <div className="max-w-xs">
-          <label className="rotulo" htmlFor="valor-total">Valor do evento (R$) *</label>
-          <input
-            id="valor-total"
-            inputMode="decimal"
-            required
-            value={valorTotal}
-            onChange={(e) => setValorTotal(e.target.value)}
-            className="campo text-lg"
-            placeholder="0,00"
-          />
-          <p className="text-xs text-cinza mt-1">Locação + montagem, combinado com o cliente.</p>
+        <div className="grid sm:grid-cols-3 gap-4">
+          <div>
+            <label className="rotulo" htmlFor="frete">Frete cobrado (R$)</label>
+            <input
+              id="frete"
+              inputMode="decimal"
+              value={frete}
+              onChange={(e) => setFrete(e.target.value)}
+              className="campo"
+              placeholder="0,00"
+            />
+          </div>
+          <div>
+            <label className="rotulo" htmlFor="desconto">Desconto (R$)</label>
+            <input
+              id="desconto"
+              inputMode="decimal"
+              value={desconto}
+              onChange={(e) => setDesconto(e.target.value)}
+              className="campo"
+              placeholder="0,00"
+            />
+          </div>
+          <div>
+            <label className="rotulo" htmlFor="valor-total">Valor do evento (R$) *</label>
+            <input
+              id="valor-total"
+              inputMode="decimal"
+              required
+              value={valorTotalCampo}
+              onChange={(e) => {
+                setValorManual(true);
+                setValorTotal(e.target.value);
+              }}
+              className="campo text-lg"
+              placeholder="0,00"
+            />
+          </div>
         </div>
+        {subtotalItens > 0 && Number.isFinite(sugerido) && (
+          <p className="text-xs text-cinza -mt-2">
+            Peças {formatCurrency(subtotalItens)}
+            {valorFrete > 0 && <> + frete {formatCurrency(valorFrete)}</>}
+            {valorDesconto > 0 && <> − desconto {formatCurrency(valorDesconto)}</>}
+            {" "}= <strong className="valor">{formatCurrency(sugerido)}</strong>.
+            {totalValido && Math.abs(total - sugerido) >= 0.01 && (
+              <>
+                {" "}O valor do evento está diferente: a diferença sai nos documentos como{" "}
+                {total > sugerido ? "montagem e serviços" : "desconto adicional"}.{" "}
+                <button
+                  type="button"
+                  onClick={() => setValorManual(false)}
+                  className="text-oliva underline"
+                >
+                  Usar {formatCurrency(sugerido)}
+                </button>
+              </>
+            )}
+          </p>
+        )}
+        {!(subtotalItens > 0) && (
+          <p className="text-xs text-cinza -mt-2">
+            Locação + montagem, combinado com o cliente. Com o preço de cada peça preenchido, o
+            valor é somado sozinho.
+          </p>
+        )}
 
         <div className="rounded-lg bg-fundo p-4 space-y-3">
           <p className="text-sm font-bold text-oliva-escuro flex items-center gap-1.5">

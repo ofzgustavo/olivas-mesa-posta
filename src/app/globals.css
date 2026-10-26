@@ -31,6 +31,24 @@
   h1, h2, h3 {
     font-family: "Cormorant Garamond", Georgia, serif;
   }
+
+  /* Documentos impressos: folha A4 branca, só o documento. */
+  @page {
+    size: A4;
+    margin: 14mm;
+  }
+
+  @media print {
+    html {
+      background-color: white;
+    }
+
+    /* sem isto, o navegador tira o fundo verde do cabeçalho da tabela */
+    * {
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+  }
 }
 
 @layer components {

@@ -9,7 +9,7 @@ const TIPOS_EDITAVEIS: TipoParcela[] = ["sinal", "saldo", "parcela", "avista"];
 
 export type PayloadEvento = {
   dados: Record<string, unknown>;
-  itens: { peca_id: string; quantidade: number }[];
+  itens: { peca_id: string; quantidade: number; valor_unitario: number }[];
   parcelas: { id?: string; tipo: TipoParcela; valor: number; data_vencimento: string }[];
 };
 
@@ -24,6 +24,8 @@ export function lerEvento(
   const data_saida = data(corpo["data_saida"]);
   const data_retorno = data(corpo["data_retorno"]);
   const valor_total = numero(corpo["valor_total"]) ?? 0;
+  const frete = numero(corpo["frete"]) ?? 0;
+  const desconto = numero(corpo["desconto"]) ?? 0;
   const convidadosBruto = corpo["convidados"];
   const convidados = convidadosBruto == null || convidadosBruto === "" ? null : inteiro(convidadosBruto);
 
@@ -34,6 +36,8 @@ export function lerEvento(
   if (data_saida > data_evento) return falha("A saída das peças não pode ser depois do evento.");
   if (data_retorno < data_evento) return falha("O retorno das peças não pode ser antes do evento.");
   if (valor_total < 0) return falha("Valor do evento inválido.");
+  if (frete < 0) return falha("Frete inválido.");
+  if (desconto < 0) return falha("Desconto inválido.");
   if (convidados === null && convidadosBruto != null && convidadosBruto !== "") {
     return falha("Número de convidados inválido.");
   }
@@ -46,12 +50,15 @@ export function lerEvento(
     const item = (bruto ?? {}) as Record<string, unknown>;
     const peca_id = uuid(item["peca_id"]);
     const quantidade = inteiro(item["quantidade"]);
+    const valorBruto = item["valor_unitario"];
+    const valor_unitario = valorBruto == null || valorBruto === "" ? 0 : numero(valorBruto);
     if (!peca_id || quantidade == null || quantidade <= 0) {
       return falha("Toda peça escolhida precisa de uma quantidade maior que zero.");
     }
+    if (valor_unitario == null || valor_unitario < 0) return falha("Preço de peça inválido.");
     if (vistas.has(peca_id)) return falha("A mesma peça foi adicionada duas vezes.");
     vistas.add(peca_id);
-    itens.push({ peca_id, quantidade });
+    itens.push({ peca_id, quantidade, valor_unitario: Math.round(valor_unitario * 100) / 100 });
   }
 
   const parcelasBrutas = Array.isArray(corpo["parcelas"]) ? (corpo["parcelas"] as unknown[]) : [];
@@ -80,7 +87,10 @@ export function lerEvento(
         data_saida,
         data_retorno,
         local: texto(corpo["local"]),
+        recebe_pecas: texto(corpo["recebe_pecas"]),
         convidados,
+        frete: Math.round(frete * 100) / 100,
+        desconto: Math.round(desconto * 100) / 100,
         valor_total: Math.round(valor_total * 100) / 100,
         observacoes: texto(corpo["observacoes"]),
       },

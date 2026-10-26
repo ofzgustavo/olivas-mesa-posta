@@ -10,7 +10,7 @@ export default async function EditarEventoPage({ params }: { params: Promise<{ i
   const [eventoRes, clientes] = await Promise.all([
     supabase
       .from("eventos")
-      .select("*, evento_itens(peca_id, quantidade), parcelas(*)")
+      .select("*, evento_itens(peca_id, quantidade, valor_unitario), parcelas(*)")
       .eq("id", id)
       .maybeSingle(),
     buscarTodas<{ id: string; nome: string }>((de, ate) =>
